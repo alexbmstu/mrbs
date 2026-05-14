@@ -1,0 +1,49 @@
+<?php
+
+// This file is part of the MRBS block for Moodle
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+require_once(dirname(dirname(dirname(dirname(__FILE__)))) . '/config.php');
+
+global $PAGE, $DB, $USER;
+
+$dayurl = new moodle_url('/blocks/mrbs/web/day.php');
+$PAGE->set_url(new moodle_url('/blocks/mrbs/web/request_vacate_send.php'));
+require_login();
+
+$context = context_system::instance();
+if (!has_capability('block/mrbs:editmrbs', $context) && !has_capability('block/mrbs:administermrbs', $context)) {
+    redirect($dayurl);
+}
+
+require_sesskey();
+
+$touserid = required_param('id', PARAM_INT);
+$message = required_param('message', PARAM_RAW);
+$format = optional_param('format', FORMAT_HTML, PARAM_INT);
+
+$touser = $DB->get_record('user', array('id' => $touserid), '*', MUST_EXIST);
+
+if ($format == FORMAT_HTML) {
+    $messagehtml = clean_text($message, FORMAT_HTML);
+    $messagetext = html_to_text($messagehtml);
+} else {
+    $messagetext = clean_param($message, PARAM_TEXT);
+    $messagehtml = text_to_html($messagetext, false, false, true);
+}
+
+email_to_user($touser, $USER, 'Request vacate room', $messagetext, $messagehtml);
+
+redirect($dayurl);
