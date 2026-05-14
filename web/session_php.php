@@ -3,126 +3,171 @@
  *                                                                             *
  *   File name       session_php.php                                           *
  *                                                                             *
- *   Description     Use Moodle session/auth handling                          *
+ *   Description     Use PHP built-in sessions handling                        *
  *                                                                             *
-\*****************************************************************************/
+ *   Notes           To use this authentication scheme, set in                 *
+ *                   config.inc.php:                                           *
+ *                       $auth["session"]  = "php";                            *
+ *                                                                             *
+ *                                                                             *
+ *   History                                                                   *
+ *    2003/11/09 JFL Created this file                                         *
+ *    Remaining history in ChangeLog and CVS logs                              *
+ *                                                                             *
+ * \*****************************************************************************/
 
-require_once(dirname(dirname(dirname(dirname(__FILE__)))) . '/config.php');
+require_once(dirname(dirname(dirname(dirname(__FILE__)))).'/config.php');
+global $PHP_SELF, $USER;
 
-global $CFG, $USER, $SESSION;
+if (isset($cookie_path_override)) {
+    $cookie_path = $cookie_path_override;
+} else {
+    $cookie_path = $PHP_SELF;
+    $cookie_path = preg_replace('|[^/]*$|', '', $cookie_path);
+}
+session_set_cookie_params(0, $cookie_path);
+//session_start();
 
 /*
- * Legacy entry point: Action=SetName.
- * In Moodle 4.x we should delegate authentication to require_login().
- */
-$action = optional_param('Action', '', PARAM_ALPHA);
-$targeturl = optional_param('TargetURL', '', PARAM_LOCALURL);
+  Target of the form with sets the URL argument "Action=SetName".
+  Will eventually return to URL argument "TargetURL=whatever".
+*/
+if (isset($Action) && ($Action == "SetName")) {
+    /* First make sure the password is valid */
+    if ($NewUserName == "") {
 
-if ($action === 'SetName') {
-    if (!empty($targeturl)) {
-        $SESSION->wantsurl = new moodle_url($targeturl)->out(false);
+        // Unset the session variables
+        if (isset($_SESSION)) {
+            $_SESSION = array();
+        } else {
+            global $HTTP_SESSION_VARS;
+            $HTTP_SESSION_VARS = array();
+        }
+    } else {
+        $NewUserName = $NewUserName;
+        $NewUserPassword = $NewUserPassword;
+        if (!authValidateUser($NewUserName, $NewUserPassword)) {
+            print_header_mrbs(0, 0, 0, 0);
+            echo "<P>".get_string('usernamenotfound')."</P>\n";
+            printLoginForm($TargetURL);
+            exit();
+        }
+
+        if (isset($_SESSION)) {
+            $_SESSION["UserName"] = $NewUserName;
+        } else {
+            global $HTTP_SESSION_VARS;
+            $HTTP_SESSION_VARS["UserName"] = $NewUserName;
+        }
     }
-    require_login();
-    redirect(!empty($targeturl) ? $targeturl : new moodle_url('/'));
+
+    header("Location: $TargetURL"); /* Redirect browser to initial page */
+    /* Note HTTP 1.1 mandates an absolute URL. Most modern browsers support relative URLs,
+        which allows to work around problems with DNS inconsistencies in the server name.
+        Anyway, if the browser cannot redirect automatically, the manual link below will work. */
+    print_header_mrbs(0, 0, 0, 0);
+    echo "<br />\n";
+    echo "<p>Please click <a href=\"$TargetURL\">here</a> if you're not redirected automatically to the page you requested.</p>\n";
+    echo "</body>\n";
+    echo "</html>\n";
+    exit();
 }
 
 /*
- * Display the login form.
- * Will eventually return to $TargetURL.
- */
+  Display the login form. Used by two routines below.
+  Will eventually return to $TargetURL.
+*/
 function printLoginForm($TargetURL) {
     global $SESSION;
-
-    if (!empty($TargetURL)) {
-        $SESSION->wantsurl = $TargetURL;
-    }
+    $SESSION->wantsurl = $TargetURL;
     require_login();
 }
 
-/**
- * Request the user name/password.
+/* authGet()
  *
- * @return void
+ * Request the user name/password
+ *
+ * Returns: Nothing
  */
 function authGet() {
-    global $SESSION;
+    global $PHP_SELF, $QUERY_STRING;
 
     print_header_mrbs(0, 0, 0, 0);
-    echo '<p>' . get_string('norights', 'block_mrbs') . "</p>\n";
 
-    $scriptname = $_SERVER['SCRIPT_NAME'] ?? '';
-    $querystring = $_SERVER['QUERY_STRING'] ?? '';
+    echo "<p>".get_string('norights', 'block_mrbs')."</p>\n";
 
-    $targeturl = basename($scriptname);
-    if (!empty($querystring)) {
-        $targeturl .= '?' . $querystring;
+    $TargetURL = basename($PHP_SELF);
+    if (isset($QUERY_STRING)) {
+        $TargetURL = $TargetURL."?".$QUERY_STRING;
     }
+    printLoginForm($TargetURL);
 
-    $SESSION->wantsurl = $targeturl;
-    require_login();
     exit();
 }
 
 function getUserName() {
     global $USER;
-
-    if (isloggedin() && !isguestuser()) {
-        return $USER->username;
-    }
-    return null;
+    return $USER->username;
 }
 
 // Print the logon entry on the top banner.
 function PrintLogonBox() {
-    global $CFG, $USER, $user_list_link, $day, $month, $year;
+    global $PHP_SELF, $QUERY_STRING, $CFG, $user_list_link, $day, $month;
+    global $year;
 
-    $scriptname = $_SERVER['SCRIPT_NAME'] ?? '';
-    $querystring = $_SERVER['QUERY_STRING'] ?? '';
-
-    $targeturl = basename($scriptname);
-    if (!empty($querystring)) {
-        $targeturl .= '?' . $querystring;
+    $TargetURL = basename($PHP_SELF);
+    if (isset($url_base) && ($url_base != "")) {
+        $TargetURL = $url_base.'/'.$TargetURL;
     }
-
+    if (isset($QUERY_STRING)) {
+        $TargetURL = $TargetURL."?".$QUERY_STRING;
+    }
     $user = getUserName();
+    if (isset($user)) {
+        // words 'you are xxxx' becomes a link to the
+        // report page with only entries created by xxx. Past entries are not
+        // displayed but this can be changed
+        $search_string = "report.php?From_day=$day&From_month=$month&".
+            "From_year=$year&To_day=1&To_month=12&To_year=2030&areamatch=&".
+            "roommatch=&namematch=&descrmatch=&summarize=1&sortby=r&display=d&".
+            "sumby=d&creatormatch=$user"; ?>
 
-    if (!empty($user)) {
-        $search_string = "report.php?From_day=$day&From_month=$month&"
-            . "From_year=$year&To_day=1&To_month=12&To_year=2030&areamatch=&"
-            . "roommatch=&namematch=&descrmatch=&summarize=1&sortby=r&display=d&"
-            . "sumby=d&creatormatch=" . urlencode($user);
-
-        echo '<td class="banner" bgcolor="#C0E0FF" align="center">';
-        echo '<a name="logonBox" href="' . s($search_string) . '" title="'
-            . s(get_string('show_my_entries', 'block_mrbs')) . '">'
-            . get_string('you_are', 'block_mrbs') . ' ' . s($user) . '</a><br>';
-
-        $logouturl = new moodle_url('/login/logout.php', array(
-            'sesskey' => sesskey()
-        ));
-        echo '<form method="post" action="' . $logouturl->out(false) . '">';
-        echo '<input type="hidden" name="loginpage" value="1" />';
-        echo '<input type="submit" value=" ' . s(get_string('logout')) . ' " />';
-        echo '</form>';
-
-        if (isset($user_list_link)) {
-            echo '<br><a href="' . s($user_list_link) . '">' . get_string('user_list') . "</a><br>\n";
-        }
-
-        echo '</td>';
+        <TD CLASS="banner" BGCOLOR="#C0E0FF" ALIGN=CENTER>
+            <A name="logonBox" href="<?php echo "$search_string\" title=\""
+                .get_string('show_my_entries', 'block_mrbs')."\">".get_string('you_are', 'block_mrbs')." "
+                .$user ?></A><br>
+                <FORM METHOD=POST ACTION="<?php echo $CFG->wwwroot.'/login/logout.php' ?>">
+            <input type="hidden" name="TargetURL" value="<?php echo $TargetURL ?>"/>
+            <input type="hidden" name="Action" value="SetName"/>
+            <input type="hidden" name="NewUserName" value=""/>
+            <input type="hidden" name="NewUserPassword" value=""/>
+            <input type="submit" value=" <?php echo get_string('logout') ?> "/>
+            </FORM>
+            <?php if (isset($user_list_link)) {
+                print "
+                <br>
+                <A href=\"$user_list_link\">".get_string('user_list')."</A><br>\n";
+            }
+            ?>
+        </TD>
+        <?php
     } else {
-        echo '<td class="banner" bgcolor="#C0E0FF" align="center">';
-        echo '<a name="logonBox" href="' . s(get_login_url()) . '">'
-            . s(get_string('usernamenotfound')) . '</a><br>';
-        echo '<form method="get" action="' . s(get_login_url()) . '">';
-        echo '<input type="hidden" name="wantsurl" value="' . s($targeturl) . '" />';
-        echo '<input type="submit" value=" ' . s(get_string('login')) . ' " />';
-        echo '</form>';
-
-        if (isset($user_list_link)) {
-            echo '<br><a href="' . s($user_list_link) . '">' . get_string('user_list') . "</a><br>\n";
-        }
-
-        echo '</td>';
+        ?>
+        <TD CLASS="banner" BGCOLOR="#C0E0FF" ALIGN=CENTER>
+            <A name="logonBox" href=""><?php echo get_string('usernamenotfound'); ?></A><br>
+            <FORM METHOD=POST ACTION="admin.php">
+                <input type="hidden" name="TargetURL" value="<?php echo $TargetURL ?>"/>
+                <input type="hidden" name="Action" value="QueryName"/>
+                <input type="submit" value=" <?php echo get_string('login') ?> "/>
+            </FORM>
+            <?php if (isset($user_list_link)) {
+                print "
+           <br>
+                <A href=\"$user_list_link\">".get_string('user_list')."</A><br>\n";
+            }
+            ?>
+        </TD>
+        <?php
     }
 }
+

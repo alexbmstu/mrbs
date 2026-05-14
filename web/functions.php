@@ -460,6 +460,39 @@ function round_t_up($t, $resolution, $am7) {
     }
 }
 
+
+if (!function_exists('get_all_user_name_fields')) {
+    /**
+     * Backward-compat shim for old Moodle API.
+     *
+     * @param bool $includemissing Ignored, kept for compatibility.
+     * @param string $tableprefix Table alias/prefix, e.g. 'u'.
+     * @return string SQL fragment with user name fields.
+     */
+    function get_all_user_name_fields($includemissing = true, $tableprefix = '') {
+        $prefix = '';
+        if (!empty($tableprefix)) {
+            $prefix = rtrim($tableprefix, '.') . '.';
+        }
+
+        $fields = array(
+            'firstname',
+            'lastname',
+            'middlename',
+            'alternatename',
+            'firstnamephonetic',
+            'lastnamephonetic',
+        );
+
+        $result = array();
+        foreach ($fields as $field) {
+            $result[] = $prefix . $field;
+        }
+
+        return implode(', ', $result);
+    }
+}
+
 // Generates some html that can be used to select which area should be displayed.
 function make_area_select_html($link, $current, $year, $month, $day) {
     global $DB;
