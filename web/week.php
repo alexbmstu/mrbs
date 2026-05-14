@@ -225,7 +225,7 @@ if ($pview != 1) {
       &lt;&lt; ' . get_string('weekbefore', 'block_mrbs') . '</a></td>
       <td align="center"><a href="' . $thisweekurl . '">' . get_string('gotothisweek', 'block_mrbs') . '</a></td>
       <td align="right"><a href="' . $weekafter . '">
-      ' . get_string('weekafter', 'block_mrbs') . '&gt;&gt;</a></td></tr></table>';
+      ' . get_string('weekafter', 'block_mrbs') . '&raquo;</a></td></tr></table>';
 }
 
 $roomdata = $DB->get_record('block_mrbs_room', array('id' => $room), '*', MUST_EXIST);

@@ -199,7 +199,7 @@ if ($pview != 1) {
     echo '<table width="100%"><tr>';
     echo '<td><a href="' . $monthbefore . '">&lt;&lt;' . get_string('monthbefore', 'block_mrbs') . '</a></td>';
     echo '<td align="center"><a href="' . $thismonthurl . '">' . get_string('gotothismonth', 'block_mrbs') . '</a></td>';
-    echo '<td align="right"><a href="' . $monthafter . '">' . get_string('monthafter', 'block_mrbs') . '&gt;&gt;</a></td>';
+    echo '<td align="right"><a href="' . $monthafter . '">' . get_string('monthafter', 'block_mrbs') . '&raquo;</a></td>';
     echo '</tr></table>';
 }
 

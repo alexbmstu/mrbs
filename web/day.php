@@ -241,7 +241,7 @@ if (!empty($area)) {
             <td align="center"><a href="' . $todayurl . '">'
                 . get_string('gototoday', 'block_mrbs') . '</a></td>
             <td align="right"><a href="' . $dayafter . '">'
-                . get_string('dayafter', 'block_mrbs') . "&gt;&gt;</a></td></tr></table>\n";
+                . get_string('dayafter', 'block_mrbs') . "&raquo;</a></td></tr></table>\n";
             echo $output;
         }
 

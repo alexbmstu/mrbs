@@ -1,7 +1,7 @@
 <?php
 require_once(dirname(dirname(dirname(dirname(__FILE__)))) . '/config.php');
 
-global $DB, $USER, $PAGE;
+global $DB, $USER, $PAGE, $OUTPUT;
 
 include "config.inc.php";
 include "functions.php";
@@ -18,13 +18,13 @@ $pview = optional_param('pview', 0, PARAM_INT);
 
 $context = context_system::instance();
 
-// If the booking belongs to the current user, try to redirect to edit page.
-if ($record = $DB->get_record('block_mrbs_entry', array('id' => $id))) {
-    if (strtolower($record->create_by) === strtolower($USER->username)) {
+// If the booking belongs to the user looking at it, they probably want to edit it.
+if ($record = $DB->get_record('blockmrbsentry', array('id' => $id))) {
+    if (strtolower($record->createby) === strtolower($USER->username)) {
         $redirect = true;
 
         if (has_capability('block/mrbs:editmrbsunconfirmed', $context, null, false)) {
-            $adminemail = $DB->get_field('block_mrbs_room', 'room_admin_email', array('id' => $record->room_id));
+            $adminemail = $DB->get_field('blockmrbsroom', 'roomadminemail', array('id' => $record->roomid));
             if ($USER->email != $adminemail && $record->type != 'U') {
                 $redirect = false;
             }
@@ -53,7 +53,7 @@ $thisurl = new moodle_url('/blocks/mrbs/web/view_entry.php', array(
 if ($area) {
     $thisurl->param('area', $area);
 } else {
-    $area = get_default_area();
+    $area = getDefaultArea();
 }
 if ($room) {
     $thisurl->param('room', $room);
@@ -68,127 +68,126 @@ if ($pview) {
 $PAGE->set_url($thisurl);
 require_login();
 
-// Moodle 4.x replacement for deprecated old user-name helper.
-$namefieldlist = \core_user\fields::get_name_fields();
-$namefields = array();
-foreach ($namefieldlist as $field) {
-    $namefields[] = 'u.' . $field;
-}
-$namefields = implode(', ', $namefields);
+// Moodle 4.x safe replacement for deprecated get_all_user_name_fields().
+$namefields = "u.firstname, u.lastname, u.middlename, u.alternatename,
+               u.firstnamephonetic, u.lastnamephonetic";
 
 if ($series) {
     $sql = "SELECT re.name,
                    re.description,
-                   re.create_by,
-                   r.room_name,
-                   a.area_name,
+                   re.createby,
+                   r.roomname,
+                   a.areaname,
                    re.type,
-                   re.room_id,
+                   re.roomid,
                    re.timestamp,
-                   (re.end_time - re.start_time) AS duration,
-                   re.start_time,
-                   re.end_time,
-                   re.rep_type,
-                   re.end_date,
-                   re.rep_opt,
-                   re.rep_num_weeks,
+                   (re.endtime - re.starttime) AS duration,
+                   re.starttime,
+                   re.endtime,
+                   re.reptype,
+                   re.enddate,
+                   re.repopt,
+                   re.repnumweeks,
                    u.id AS userid,
                    $namefields
-              FROM {block_mrbs_repeat} re
-         LEFT JOIN {user} u ON u.username = re.create_by
-              JOIN {block_mrbs_room} r ON re.room_id = r.id
-              JOIN {block_mrbs_area} a ON r.area_id = a.id
+              FROM {blockmrbsrepeat} re
+         LEFT JOIN {user} u ON u.username = re.createby
+              JOIN {blockmrbsroom} r ON re.roomid = r.id
+              JOIN {blockmrbsarea} a ON r.areaid = a.id
              WHERE re.id = ?";
 } else {
     $sql = "SELECT e.name,
                    e.description,
-                   e.create_by,
-                   r.room_name,
-                   a.area_name,
+                   e.createby,
+                   r.roomname,
+                   a.areaname,
                    e.type,
-                   e.room_id,
+                   e.roomid,
                    e.timestamp,
-                   (e.end_time - e.start_time) AS duration,
-                   e.start_time,
-                   e.end_time,
-                   e.repeat_id,
+                   (e.endtime - e.starttime) AS duration,
+                   e.starttime,
+                   e.endtime,
+                   e.repeatid,
                    u.id AS userid,
                    $namefields
-              FROM {block_mrbs_entry} e
-         LEFT JOIN {user} u ON u.username = e.create_by
-              JOIN {block_mrbs_room} r ON e.room_id = r.id
-              JOIN {block_mrbs_area} a ON r.area_id = a.id
+              FROM {blockmrbsentry} e
+         LEFT JOIN {user} u ON u.username = e.createby
+              JOIN {blockmrbsroom} r ON e.roomid = r.id
+              JOIN {blockmrbsarea} a ON r.areaid = a.id
              WHERE e.id = ?";
 }
 
 $booking = $DB->get_record_sql($sql, array($id), MUST_EXIST);
-$booking->fullname = fullname($booking);
+
+$fullname = '';
+if (!empty($booking->userid)) {
+    $fullname = fullname($booking);
+}
 
 $name = s($booking->name);
-$description = format_text($booking->description, FORMAT_PLAIN);
-$userurl = null;
-$createby = s($booking->create_by);
+$description = nl2br(s($booking->description));
+$createby = s($booking->createby);
 
-if (!empty($booking->userid)) {
+if (!empty($booking->userid) && !empty($fullname)) {
     $userurl = new moodle_url('/user/view.php', array('id' => $booking->userid));
-    $createby = html_writer::link($userurl, s($booking->fullname));
+    $createby = html_writer::link($userurl, s($fullname));
 }
 
-$roomname = s($booking->room_name);
-$areaname = s($booking->area_name);
+$roomname = s($booking->roomname);
+$areaname = s($booking->areaname);
 $type = $booking->type;
-$roomid = $booking->room_id;
-$updated = time_date_string($booking->timestamp);
+$roomid = $booking->roomid;
+$updated = timeDateString($booking->timestamp);
 
-$duration = $booking->duration - cross_dst($booking->start_time, $booking->end_time);
+$duration = $booking->duration - crossDST($booking->starttime, $booking->endtime);
 
-if ($enable_periods) {
-    list($startperiod, $startdate) = period_date_string($booking->start_time);
-    list(, $enddate) = period_date_string($booking->end_time, -1);
-    toPeriodString($startperiod, $duration, $dur_units);
+if ($enableperiods) {
+    list($startperiod, $startdate) = periodDateString($booking->starttime);
+    list(, $enddate) = periodDateString($booking->endtime, -1);
+    toPeriodString($startperiod, $duration, $durunits);
 } else {
-    $startdate = time_date_string($booking->start_time);
-    $enddate = time_date_string($booking->end_time);
-    toTimeString($duration, $dur_units);
+    $startdate = timeDateString($booking->starttime);
+    $enddate = timeDateString($booking->endtime);
+    toTimeString($duration, $durunits);
 }
 
-$rep_type = 0;
+$reptype = 0;
 $repeatid = 0;
-$rep_end_date = '';
-$rep_num_weeks = '';
-$rep_opt = '';
+$rependdate = '';
+$repnumweeks = '';
+$repopt = '';
 
 if ($series == 1) {
-    $rep_type = $booking->rep_type;
-    $rep_end_date = userdate($booking->end_date, '%A %d %B %Y');
-    $rep_opt = $booking->rep_opt;
-    $rep_num_weeks = $booking->rep_num_weeks;
+    $reptype = $booking->reptype;
+    $rependdate = userdate($booking->enddate, '%A %d %B %Y');
+    $repopt = $booking->repopt;
+    $repnumweeks = $booking->repnumweeks;
     $repeatid = false;
 
-    $entry = $DB->get_records('block_mrbs_entry', array('repeat_id' => $id, 'entry_type' => 1), 'start_time', 'id', 0, 1);
+    $entry = $DB->get_records('blockmrbsentry', array('repeatid' => $id, 'entrytype' => 1), 'starttime', 'id', 0, 1);
     if (empty($entry)) {
-        $entry = $DB->get_records('block_mrbs_entry', array('repeat_id' => $id), 'start_time', 'id', 0, 1);
+        $entry = $DB->get_records('blockmrbsentry', array('repeatid' => $id), 'starttime', 'id', 0, 1);
     }
     if (!empty($entry)) {
         $entry = reset($entry);
         $id = $entry->id;
     }
 } else {
-    $repeatid = $booking->repeat_id;
+    $repeatid = $booking->repeatid;
     if ($repeatid != 0) {
-        $repeat = $DB->get_record('block_mrbs_repeat', array('id' => $repeatid));
+        $repeat = $DB->get_record('blockmrbsrepeat', array('id' => $repeatid));
         if ($repeat) {
-            $rep_type = $repeat->rep_type;
-            $rep_end_date = userdate($repeat->end_date, '%A %d %B %Y');
-            $rep_opt = $repeat->rep_opt;
-            $rep_num_weeks = $repeat->rep_num_weeks;
+            $reptype = $repeat->reptype;
+            $rependdate = userdate($repeat->enddate, '%A %d %B %Y');
+            $repopt = $repeat->repopt;
+            $repnumweeks = $repeat->repnumweeks;
         }
     }
 }
 
 $roomadmin = false;
 if (has_capability('block/mrbs:editmrbsunconfirmed', $context, null, false)) {
-    $adminemail = $DB->get_field('block_mrbs_room', 'room_admin_email', array('id' => $booking->room_id));
+    $adminemail = $DB->get_field('blockmrbsroom', 'roomadminemail', array('id' => $booking->roomid));
     if ($adminemail == $USER->email) {
         $roomadmin = true;
     }
@@ -198,9 +197,9 @@ if ($roomadmin && $type == 'U') {
     redirect(new moodle_url('/blocks/mrbs/web/edit_entry.php', array('id' => $id)));
 }
 
-print_header_mrbs($day, $month, $year, $area);
+printHeaderMRBS($day, $month, $year, $area);
 
-echo $OUTPUT->heading(get_string('viewentry', 'block_mrbs'), 2);
+echo $OUTPUT->heading(get_string('entry', 'block_mrbs'), 3);
 
 echo html_writer::start_tag('table', array('class' => 'generaltable'));
 echo html_writer::start_tag('tbody');
@@ -213,33 +212,35 @@ $row = function($label, $value) {
 };
 
 echo $row(get_string('namebooker', 'block_mrbs'), $name);
-echo $row(get_string('description', 'block_mrbs'), $description);
-echo $row(get_string('room', 'block_mrbs'), $roomname);
-echo $row(get_string('area', 'block_mrbs'), $areaname);
+echo $row(get_string('description'), $description);
+echo $row(get_string('room', 'block_mrbs'), nl2br($areaname . ' - ' . $roomname));
+echo $row(get_string('startdate', 'block_mrbs'), $startdate);
+echo $row(get_string('duration', 'block_mrbs'), s($duration . ' ' . $durunits));
+echo $row(get_string('enddate', 'block_mrbs'), $enddate);
+echo $row(get_string('type', 'block_mrbs'), empty($typel[$type]) ? '?' . s($type) . '?' : s($typel[$type]));
 echo $row(get_string('createdby', 'block_mrbs'), $createby);
-echo $row(get_string('start_date', 'block_mrbs'), $startdate);
-echo $row(get_string('end_date', 'block_mrbs'), $enddate);
-echo $row(get_string('duration', 'block_mrbs'), s($dur_units));
-echo $row(get_string('lastupdate', 'block_mrbs'), $updated);
-echo $row(get_string('type', 'block_mrbs'), s($type));
+echo $row(get_string('lastmodified'), $updated);
 
-if ($rep_type) {
-    echo $row(get_string('rep_type', 'block_mrbs'), get_string('rep_type_' . $rep_type, 'block_mrbs'));
-    if ($rep_num_weeks !== '') {
+if ($reptype != 0) {
+    $repeatkey = 'reptype' . $reptype;
+    echo $row(get_string('reptype', 'block_mrbs'), get_string($repeatkey, 'block_mrbs'));
+
+    if ($reptype == 6 && $repnumweeks !== '') {
         echo $row(
-            get_string('rep_num_weeks', 'block_mrbs') . get_string('rep_for_nweekly', 'block_mrbs'),
-            s($rep_num_weeks)
+            get_string('repnumweeks', 'block_mrbs') . get_string('repfornweekly', 'block_mrbs'),
+            s($repnumweeks)
         );
     }
-    if (!empty($rep_end_date)) {
-        echo $row(get_string('rep_end_date', 'block_mrbs'), s($rep_end_date));
+
+    if (!empty($rependdate)) {
+        echo $row(get_string('rependdate', 'block_mrbs'), s($rependdate));
     }
 }
 
 echo html_writer::end_tag('tbody');
 echo html_writer::end_tag('table');
 
-$canedit = getWritable($booking->create_by, getUserName());
+$canedit = getWritable($booking->createby, getUserName());
 
 $links = array();
 if ($canedit || $roomadmin) {
@@ -254,7 +255,7 @@ if ($canedit || $roomadmin) {
         $links[] = html_writer::link(
             new moodle_url('/blocks/mrbs/web/edit_entry.php', array(
                 'id' => $id,
-                'edit_type' => 'series',
+                'edittype' => 'series',
                 'day' => $day,
                 'month' => $month,
                 'year' => $year
@@ -270,7 +271,8 @@ if ($canedit || $roomadmin) {
                 'series' => 0,
                 'sesskey' => sesskey()
             )),
-            get_string('deleteentry', 'block_mrbs')
+            get_string('deleteentry', 'block_mrbs'),
+            array('onclick' => "return confirm('" . addslashes_js(get_string('confirmdel', 'block_mrbs')) . "')")
         );
     }
 
@@ -284,7 +286,8 @@ if ($canedit || $roomadmin) {
                 'month' => $month,
                 'year' => $year
             )),
-            get_string('deleteseries', 'block_mrbs')
+            get_string('deleteseries', 'block_mrbs'),
+            array('onclick' => "return confirm('" . addslashes_js(get_string('confirmdel', 'block_mrbs')) . "')")
         );
     }
 }
@@ -293,7 +296,7 @@ if (!empty($links)) {
     echo html_writer::div(implode(' | ', $links), 'mrbs-actions');
 }
 
-if (strtolower($USER->username) != strtolower($booking->create_by) && file_exists(__DIR__ . '/request_vacate.php')) {
+if (strtolower($USER->username) != strtolower($booking->createby) && file_exists(__DIR__ . '/request_vacate.php')) {
     include "request_vacate.php";
 }
 
